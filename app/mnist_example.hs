@@ -3,13 +3,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main (main) where
 
-import qualified Codec.Picture as Picture
 import Control.Applicative
 import Control.Monad
 import Data.Monoid
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
 import Data.Version
+import qualified Graphics.Image as HIP
+import qualified Graphics.Image.Interface as HIP
 import Options.Applicative
 import Menoh
 import System.FilePath
@@ -46,10 +47,11 @@ main = do
       output_dims = [batch_size, category_num]
 
   images <- liftM VS.concat $ forM image_filenames $ \fname -> do
-    ret <- Picture.readImage $ input_dir </> fname
-    case ret of
-      Left e -> error e
-      Right img -> return $ convert width height img
+    img <- HIP.readImageY HIP.VS $ input_dir </> fname
+    return
+      $ VS.map (\(HIP.PixelY y) -> realToFrac y * 255 :: Float)
+      $ HIP.toVector $ HIP.resize HIP.Bilinear HIP.Edge (height,width)
+      $ img
 
   -- Aliases to onnx's node input and output tensor name
   let mnist_in_name  = "139900320569040"
@@ -120,34 +122,5 @@ parserInfo dir = info (helper <*> versionOption <*> optionsParser dir)
       $  hidden
       <> long "version"
       <> help "Show version"
-
--- -------------------------------------------------------------------------
-
-convert :: Int -> Int -> Picture.DynamicImage -> VS.Vector Float
-convert w h = reorderToNCHW . resize (w,h) . crop . Picture.convertRGB8
-
-crop :: Picture.Pixel a => Picture.Image a -> Picture.Image a
-crop img = Picture.generateImage (\x y -> Picture.pixelAt img (base_x + x) (base_y + y)) shortEdge shortEdge
-  where
-    shortEdge = min (Picture.imageWidth img) (Picture.imageHeight img)
-    base_x = (Picture.imageWidth  img - shortEdge) `div` 2
-    base_y = (Picture.imageHeight img - shortEdge) `div` 2
-
--- TODO: Should we do some kind of interpolation?
-resize :: Picture.Pixel a => (Int,Int) -> Picture.Image a -> Picture.Image a
-resize (w,h) img = Picture.generateImage (\x y -> Picture.pixelAt img (x * orig_w `div` w) (y * orig_h `div` h)) w h
-  where
-    orig_w = Picture.imageWidth  img
-    orig_h = Picture.imageHeight img
-
-reorderToNCHW :: Picture.Image Picture.PixelRGB8 -> VS.Vector Float
-reorderToNCHW img = VS.generate (Picture.imageHeight img * Picture.imageWidth img) f
-  where
-    f i =
-      case Picture.pixelAt img x y of
-        Picture.PixelRGB8 r g b ->
-          (fromIntegral r + fromIntegral g + fromIntegral b) / 3
-      where
-        (y,x) = i `divMod` Picture.imageWidth img
 
 -- -------------------------------------------------------------------------

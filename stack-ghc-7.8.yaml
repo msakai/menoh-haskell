@@ -41,7 +41,11 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- JuicyPixels-3.2.7.2
+- attoparsec-binary-0.2
+- hip-1.0.0.0
+- netpbm-1.0.2
+- storable-record-0.0.4
+- utility-ht-0.0.14
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

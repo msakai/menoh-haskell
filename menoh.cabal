@@ -57,8 +57,7 @@ executable vgg16_example
   main-is: vgg16_example.hs
   build-depends:
       base
-      -- convertRGB8 requires JuicyPixels >=3.2.7
-    , JuicyPixels >=3.2.7 && <3.3
+    , hip
     , optparse-applicative >=0.11 && <0.15
     , menoh
     , vector
@@ -73,7 +72,7 @@ executable mnist_example
   build-depends:
       base
     , filepath >=1.3 && <1.5
-    , JuicyPixels
+    , hip
     , optparse-applicative
     , menoh
     , vector

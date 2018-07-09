@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main (main) where
 
-import qualified Codec.Picture as Picture
 import Control.Applicative
 import Control.Monad
 import Data.List
@@ -12,6 +11,7 @@ import Data.Ord
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
 import Data.Version
+import qualified Graphics.Image as HIP
 import Options.Applicative
 import Menoh
 import Text.Printf
@@ -30,11 +30,9 @@ main = do
       input_dims  = [batch_size, channel_num, height, width]
       output_dims = [batch_size, category_num]
 
-  ret <- Picture.readImage (optInputImagePath opt)
-  let image_data =
-        case ret of
-          Left e -> error e
-          Right img -> convert width height img
+  img <- HIP.readImageRGB HIP.VS $ optInputImagePath opt
+  let image_data :: VS.Vector Float
+      image_data = convert width height img
 
   -- Aliases to onnx's node input and output tensor name
   let conv1_1_in_name  = "140326425860192"
@@ -128,37 +126,32 @@ parserInfo = info (helper <*> versionOption <*> optionsParser)
 
 -- -------------------------------------------------------------------------
 
-convert :: Int -> Int -> Picture.DynamicImage -> VS.Vector Float
-convert w h = reorderToNCHW . resize (w,h) . crop . Picture.convertRGB8
+convert :: Int -> Int -> HIP.Image HIP.VS HIP.RGB Double -> VS.Vector Float
+convert w h = reorderToNCHW . HIP.resize HIP.Bilinear HIP.Edge (h,w) . crop
 
-crop :: Picture.Pixel a => Picture.Image a -> Picture.Image a
-crop img = Picture.generateImage (\x y -> Picture.pixelAt img (base_x + x) (base_y + y)) shortEdge shortEdge
+crop :: HIP.Array arr cs e => HIP.Image arr cs e -> HIP.Image arr cs e
+crop img = HIP.crop (base_y, base_x) (shortEdge, shortEdge) img
   where
-    shortEdge = min (Picture.imageWidth img) (Picture.imageHeight img)
-    base_x = (Picture.imageWidth  img - shortEdge) `div` 2
-    base_y = (Picture.imageHeight img - shortEdge) `div` 2
-
--- TODO: Should we do some kind of interpolation?
-resize :: Picture.Pixel a => (Int,Int) -> Picture.Image a -> Picture.Image a
-resize (w,h) img = Picture.generateImage (\x y -> Picture.pixelAt img (x * orig_w `div` w) (y * orig_h `div` h)) w h
-  where
-    orig_w = Picture.imageWidth  img
-    orig_h = Picture.imageHeight img
+    (height, width) = HIP.dims img
+    shortEdge = min width height
+    base_x = (width - shortEdge) `div` 2
+    base_y = (height - shortEdge) `div` 2
 
 -- Note that VGG16.onnx assumes BGR image
-reorderToNCHW :: Picture.Image Picture.PixelRGB8 -> VS.Vector Float
-reorderToNCHW img = VS.generate (3 * Picture.imageHeight img * Picture.imageWidth img) f
+reorderToNCHW :: HIP.Image HIP.VS HIP.RGB Double -> VS.Vector Float
+reorderToNCHW img = VS.generate (3 * height * width) f
   where
+    (height, width) = HIP.dims img
     f i =
-      case Picture.pixelAt img x y of
-        Picture.PixelRGB8 r g b ->
+      case HIP.index img (y,x) of
+        HIP.PixelRGB r g b ->
           case ch of
-            0 -> fromIntegral b
-            1 -> fromIntegral g
-            2 -> fromIntegral r
+            0 -> realToFrac b * 255
+            1 -> realToFrac g * 255
+            2 -> realToFrac r * 255
             _ -> undefined
       where
-        (ch,m) = i `divMod` (Picture.imageWidth img * Picture.imageHeight img)
-        (y,x) = m `divMod` Picture.imageWidth img
+        (ch,m) = i `divMod` (width * height)
+        (y,x) = m `divMod` width
 
 -- -------------------------------------------------------------------------
