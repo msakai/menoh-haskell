@@ -4,6 +4,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnboxedTuples #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Menoh
@@ -127,6 +129,7 @@ import Data.Proxy
 import Data.Typeable
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Generic.Mutable as VGM
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Storable.Mutable as VSM
 import qualified Data.Vector.Unboxed as VU
@@ -135,6 +138,11 @@ import qualified Data.IntMap as IntMap
 import Data.Version
 import Foreign
 import Foreign.C
+
+import Control.Monad.Primitive (PrimMonad (..))
+import qualified Data.Primitive as Prim
+import qualified Data.Vector.Primitive as VP
+import GHC.Exts
 
 import qualified Menoh.Base as Base
 import qualified Paths_menoh
@@ -578,6 +586,35 @@ basicReadBufferStorableVector dtype0 dtype dims p = do
   vec <- VSM.new n
   VSM.unsafeWith vec $ \dst -> copyArray dst (castPtr p) n
   VS.unsafeFreeze vec
+
+
+-- | Default implementation of 'basicWriteBuffer' for 'VS.Vector' class
+-- for the cases whete the 'Storable' is compatible for representation in buffers.
+basicWriteBufferPrimVector
+  :: forall a. (VP.Prim a, HasDType a)
+  => DType -> Dims -> Ptr () -> VP.Vector a -> IO ()
+basicWriteBufferPrimVector dtype dims (Ptr addr#) vec@(VP.Vector i m arr) = do
+  let n = product dims
+  checkDTypeAndSize "Menoh.basicWriteBufferPrimVector" (dtype, n) (dtypeOf (Proxy :: Proxy a), VG.length vec)
+  let sz = Prim.sizeOf (undefined :: a)
+  Prim.copyByteArrayToAddr (Prim.Addr addr#) arr (i*sz) (m*sz)
+
+-- | Default implementation of 'basicReadToBuffer' for 'VS.Vector' class
+-- for the cases whete the 'Storable' is compatible for representation in buffers.
+basicReadBufferPrimVector
+  :: forall a. (VP.Prim a, HasDType a)
+  => DType -> Dims -> Ptr () -> IO (VP.Vector a)
+basicReadBufferPrimVector dtype dims (Ptr addr#) = do
+  checkDType "Menoh.basicReadBufferPrimVector" dtype (dtypeOf (Proxy :: Proxy a))
+  let n = product dims
+  vec@(VP.MVector i _ arr) <- VGM.new n
+  let sz = Prim.sizeOf (undefined :: a)
+  copyAddrToByteArray' (Prim.Addr addr#) arr i (n*sz)
+  VP.unsafeFreeze vec
+
+copyAddrToByteArray' :: PrimMonad m => Prim.Addr -> Prim.MutableByteArray (PrimState m) -> Int -> Int -> m ()
+copyAddrToByteArray' (Prim.Addr addr#) (Prim.MutableByteArray arr#) (I# i#) (I# n#) =
+  primitive (\s# -> (# copyAddrToByteArray# addr# arr# i# n# s#, () #))
 
 
 instance ToBuffer (V.Vector Float) where
