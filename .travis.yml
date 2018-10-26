@@ -68,12 +68,18 @@ install:
     brew upgrade python
     export PATH=/usr/local/opt/python/libexec/bin:$PATH
     brew install mkl-dnn protobuf
+    bash .travis/install_menoh.sh
+    export PKG_CONFIG_PATH=$HOME/menoh${MENOH_INSTALL_SUFFIX}/share/pkgconfig:$PKG_CONFIG_PATH
+    export LD_LIBRARY_PATH=$HOME/menoh${MENOH_INSTALL_SUFFIX}/lib:$HOME/mkl-dnn${MKL_DNN_INSTALL_SUFFIX}/lib:$LD_LIBRARY_PATH
   else
-    bash .travis/install_mkldnn.sh
+    sudo apt update
+    curl -LO https://github.com/pfnet-research/menoh/releases/download/v1.1.1/ubuntu1404_mkl-dnn_0.16-1_amd64.deb
+    curl -LO https://github.com/pfnet-research/menoh/releases/download/v1.1.1/ubuntu1404_menoh_1.1.1-1_amd64.deb
+    curl -LO https://github.com/pfnet-research/menoh/releases/download/v1.1.1/ubuntu1404_menoh-dev_1.1.1-1_amd64.deb
+    sudo dpkg -i --force-depends *.deb
+    sudo apt install -f
   fi
-- bash .travis/install_menoh.sh
-- export PKG_CONFIG_PATH=$HOME/menoh${MENOH_INSTALL_SUFFIX}/share/pkgconfig:$PKG_CONFIG_PATH
-- export LD_LIBRARY_PATH=$HOME/menoh${MENOH_INSTALL_SUFFIX}/lib:$HOME/mkl-dnn${MKL_DNN_INSTALL_SUFFIX}/lib:$LD_LIBRARY_PATH
+
 - stack --jobs 2 --no-terminal --install-ghc build --test --bench --only-dependencies $FLAGS
 
 script:
